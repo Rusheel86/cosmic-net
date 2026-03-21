@@ -1,0 +1,351 @@
+# config.yaml
+# Purpose: Central configuration for Cosmic-Net GNN pipeline
+# All hyperparameters, data sources, and ablation flags are defined here
+# Change this file ONLY to switch data sources or run ablation experiments
+
+# =============================================================================
+# RANDOM SEED (for full reproducibility)
+# =============================================================================
+seed: 42
+
+# =============================================================================
+# DATA CONFIGURATION
+# =============================================================================
+data:
+  # Active data source: synthetic | tng | camels | camels_hf
+  source: synthetic
+
+  # Grouping method for halos: fof (Friends-of-Friends) | dbscan
+  grouping: fof
+
+  # Train/validation/test split ratios
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+  # Batch size for DataLoader
+  batch_size: 32
+
+  # Number of DataLoader workers
+  num_workers: 4
+
+  # Synthetic data paths (relative to project root)
+  synthetic:
+    features_path: data/raw/synthetic_features.pt
+    csv_path: data/raw/synthetic_preprocessed_data.csv
+
+  # IllustrisTNG-100 configuration
+  tng:
+    base_url: https://www.tng-project.org/api/TNG100-1/
+    snapshot: 99  # z=0
+    n_halos: 500  # Number of most massive halos to use
+    min_subhalos_per_halo: 3  # Minimum subhalos per halo (drop if fewer)
+    cache_dir: data/raw/tng_cache
+    # Local CSV files (optional - if present, used instead of API)
+    raw_file: data/raw/tng100_real_data.csv  # Central subhalos only (needs expansion)
+    clustered_file: data/raw/tng100_clustered.csv  # All subhalos grouped by halo
+
+  # CAMELS HDF5 configuration
+  camels:
+    base_url: https://users.flatironinstitute.org/~camels/
+    suite: IllustrisTNG  # or SIMBA
+    simulation: LH_0
+    cache_dir: data/raw/camels_cache
+
+  # CAMELS Hugging Face configuration
+  camels_hf:
+    dataset_name: camels-multifield-dataset/CAMELS
+    split: train
+    cache_dir: data/raw/camels_hf_cache
+
+# =============================================================================
+# GRAPH CONSTRUCTION CONFIGURATION
+# =============================================================================
+graph:
+  # Edge construction method: radius | knn
+  method: radius
+
+  # Radius for radius-based edge construction (Mpc)
+  radius_mpc: 2.0
+
+  # K for k-nearest neighbors (when method: knn)
+  k_neighbors: 10
+
+  # Include self-loops (node retains own features during message passing)
+  self_loops: true
+
+  # Edge features to include (any subset works)
+  # Options: distance, delta_v, cos_theta, mass_ratio, proj_sep
+  edge_features:
+    - distance
+    - delta_v
+    - cos_theta
+    - mass_ratio
+    - proj_sep
+
+  # Hierarchical graph construction (multi-scale)
+  # false: single-level subhalo graphs (default)
+  # true: 2-level hierarchy (subhalo -> halo -> cluster)
+  hierarchical: false
+
+  # Hierarchical aggregation settings (when hierarchical: true)
+  hierarchical_settings:
+    halo_pooling: mean  # mean | max | attention
+    cluster_radius_mpc: 10.0
+
+# =============================================================================
+# GNN MODEL CONFIGURATION
+# =============================================================================
+model:
+  # Number of input node features
+  node_features: 4  # [log_stellar_mass, log_vel_disp, log_half_mass_r, log_metallicity]
+
+  # Number of edge features (auto-calculated from graph.edge_features, but can override)
+  edge_features: 5
+
+  # Hidden dimension for GNN layers
+  hidden_dim: 128
+
+  # Output dimension (before final prediction head)
+  output_dim: 64
+
+  # Number of NNConv layers
+  num_layers: 3
+
+  # Dropout rate
+  dropout: 0.2
+
+  # Pooling method: mean | set2set
+  pooling: mean
+
+  # Set2Set settings (when pooling: set2set)
+  set2set:
+    processing_steps: 4
+    num_layers: 1
+
+  # Residual connections (post-norm style)
+  residual: true
+
+  # MC-Dropout for uncertainty quantification
+  mc_dropout: true
+
+  # Number of MC samples for uncertainty estimation
+  mc_samples: 50
+
+  # Activation function: relu | leaky_relu | elu | gelu
+  activation: leaky_relu
+
+# =============================================================================
+# TRAINING CONFIGURATION
+# =============================================================================
+training:
+  # Number of training epochs
+  epochs: 200
+
+  # Learning rate
+  learning_rate: 0.001
+
+  # Weight decay (L2 regularization)
+  weight_decay: 0.0001
+
+  # Optimizer: adam | adamw | sgd
+  optimizer: adamw
+
+  # Learning rate scheduler: cosine | step | plateau | none
+  lr_scheduler: cosine
+
+  # Scheduler-specific settings
+  lr_scheduler_settings:
+    # For step scheduler
+    step_size: 50
+    gamma: 0.5
+    # For plateau scheduler
+    patience: 10
+    factor: 0.5
+    # For cosine scheduler
+    T_max: 200
+    eta_min: 0.00001
+
+  # Early stopping patience (0 = disabled)
+  early_stopping_patience: 20
+
+  # Gradient clipping for main loss
+  grad_clip: 1.0
+
+  # Virial loss gradient clipping (separate from MSE)
+  virial_grad_clip: 1.0
+
+  # Lambda schedule for virial loss: cosine | linear | fixed
+  lambda_schedule: cosine
+
+  # Lambda annealing parameters
+  lambda_start: 0.0
+  lambda_end: 1.0
+  lambda_epochs: 100  # Epochs over which to anneal lambda
+
+  # Fixed lambda value (when lambda_schedule: fixed)
+  lambda_fixed: 0.5
+
+  # Cross-simulation generalization experiment
+  # Set train_source != test_source to enable
+  train_source: synthetic
+  test_source: synthetic
+
+  # Checkpoint settings
+  checkpoint_dir: outputs/checkpoints
+  save_every: 10  # Save checkpoint every N epochs
+  save_best: true  # Save best validation checkpoint
+
+# =============================================================================
+# PHYSICS-INFORMED LOSS CONFIGURATION
+# =============================================================================
+physics:
+  # Gravitational constant (in appropriate units: Mpc, M_sun, km/s)
+  # G = 4.302e-6 kpc (km/s)^2 / M_sun, converted to Mpc
+  G: 4.302e-9  # Mpc (km/s)^2 / M_sun
+
+  # Virial coefficient (2*KE + PE ≈ 0 when virialized)
+  # For a virialized system: 2*KE/|PE| = 1
+  virial_coefficient: 2.0
+
+  # Whether to include virial constraint in loss
+  use_virial_loss: true
+
+# =============================================================================
+# EXPLAINABILITY CONFIGURATION
+# =============================================================================
+explain:
+  # Explanation method: pgexplainer | gnnexplainer
+  method: pgexplainer
+
+  # PGExplainer settings
+  pgexplainer:
+    epochs: 30
+    lr: 0.003
+    num_hops: 3
+
+  # GNNExplainer settings (fallback)
+  gnnexplainer:
+    epochs: 200
+    lr: 0.01
+    num_hops: 3
+    edge_size: 0.005
+    node_feat_size: 1.0
+
+  # Output settings
+  output_dir: outputs/explanations
+  top_k_nodes: 10  # Top K important nodes to highlight
+  top_k_edges: 20  # Top K important edges to highlight
+
+# =============================================================================
+# SYMBOLIC REGRESSION CONFIGURATION
+# =============================================================================
+symbolic:
+  # Library: pysr | gplearn
+  library: pysr
+
+  # Embedding extraction point: pre_pooling | post_pooling
+  embedding_point: pre_pooling
+
+  # PySR settings
+  pysr:
+    niterations: 100
+    populations: 30
+    maxsize: 20
+    ncyclesperiteration: 550
+    binary_operators:
+      - "+"
+      - "-"
+      - "*"
+      - "/"
+    unary_operators:
+      - log
+      - sqrt
+      - square
+      - cube
+    parsimony: 0.0032  # Complexity penalty
+    weight_optimize: 0.001
+    timeout_in_seconds: 3600  # 1 hour
+
+  # gplearn settings (fallback)
+  gplearn:
+    population_size: 5000
+    generations: 50
+    tournament_size: 20
+    function_set:
+      - add
+      - sub
+      - mul
+      - div
+      - sqrt
+      - log
+    parsimony_coefficient: 0.001
+
+  # Dimensional analysis enforcement
+  enforce_dimensional_consistency: true
+
+  # Output settings
+  output_dir: outputs/equations
+
+  # Feature dimensions for dimensional analysis
+  # [M] = mass, [L] = length, [T] = time, [1] = dimensionless
+  feature_dimensions:
+    log_stellar_mass: "[M]"
+    log_vel_dispersion: "[L/T]"
+    log_half_mass_radius: "[L]"
+    log_metallicity: "[1]"
+    target_M_halo: "[M]"
+
+# =============================================================================
+# WEIGHTS & BIASES CONFIGURATION
+# =============================================================================
+wandb:
+  # Enable W&B logging
+  enabled: true
+
+  # W&B project name
+  project: cosmic-net
+
+  # W&B entity (username or team name)
+  entity: null  # Set via WANDB_ENTITY env var or leave null for default
+
+  # Run name prefix (full name will be: prefix_timestamp)
+  run_name_prefix: cosmicnet
+
+  # Tags for organizing runs
+  tags:
+    - gnn
+    - physics-informed
+    - dark-matter
+
+  # Log frequency (steps)
+  log_every: 10
+
+  # Watch model gradients and parameters
+  watch_model: true
+  watch_freq: 100
+
+# =============================================================================
+# API / DEPLOYMENT CONFIGURATION
+# =============================================================================
+api:
+  host: 0.0.0.0
+  port: 8000
+
+  # Model checkpoint to load for inference
+  checkpoint_path: outputs/checkpoints/best_model.pt
+
+  # Enable CORS
+  cors_origins:
+    - "*"
+
+  # API rate limiting
+  rate_limit: 100  # requests per minute
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  level: INFO
+  log_file: outputs/logs/cosmic_net.log
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
