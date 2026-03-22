@@ -214,39 +214,47 @@ class TNGLoader(BaseDataLoader):
     def _load_from_clustered_csv(self, filepath: str) -> Tuple[pd.DataFrame, Dict[int, Dict[str, Any]]]:
         """
         Load pre-clustered data from CSV.
-
-        Args:
-            filepath: Path to clustered CSV file
-
-        Returns:
-            Tuple of (subhalos_df, groups_dict)
         """
+        H = 0.6774
+        CKPC_TO_MPC = 1e-3 / H
+
         df = pd.read_csv(filepath)
         logger.info(f"Loaded {len(df)} subhalos from {filepath}")
 
-        # Fix column name if needed (vel_dispersion → velocity_dispersion)
+        # Fix column name variant
         if 'vel_dispersion' in df.columns and 'velocity_dispersion' not in df.columns:
             df = df.rename(columns={'vel_dispersion': 'velocity_dispersion'})
 
-        # Convert positions from ckpc/h to Mpc if values are large (>100 = still in ckpc/h)
+        # Fix positions: ckpc/h → Mpc
         if df['pos_x'].abs().max() > 100:
-            H = 0.6774
-            CKPC_TO_MPC = 1e-3 / H
             df['pos_x'] = df['pos_x'] * CKPC_TO_MPC
             df['pos_y'] = df['pos_y'] * CKPC_TO_MPC
             df['pos_z'] = df['pos_z'] * CKPC_TO_MPC
-            logger.info(f"Converted positions from ckpc/h to Mpc")
+            logger.info("Converted positions from ckpc/h to Mpc")
 
-        # Add linear halo_mass column if only log version exists
-        if 'halo_mass' not in df.columns and 'halo_mass_log' in df.columns:
+        # Fix stellar_mass: log10 → linear
+        if df['stellar_mass'].between(6, 16).all():
+            df['stellar_mass'] = 10 ** df['stellar_mass']
+            logger.info("Converted stellar_mass from log10 to linear")
+
+        # Fix half_mass_radius: ckpc/h → Mpc
+        if df['half_mass_radius'].abs().max() > 1.0:
+            df['half_mass_radius'] = df['half_mass_radius'] * CKPC_TO_MPC
+            logger.info("Converted half_mass_radius from ckpc/h to Mpc")
+
+        # Add linear halo_mass column if missing
+        if 'halo_mass' not in df.columns:
             df['halo_mass'] = 10 ** df['halo_mass_log']
-            logger.info("Created halo_mass column from halo_mass_log")
+            logger.info("Created halo_mass from halo_mass_log")
+        elif df['halo_mass'].between(10, 20).all():
+            df['halo_mass'] = 10 ** df['halo_mass']
+            logger.info("Fixed halo_mass from log to linear scale")
 
-        # Build groups dict from DataFrame
+        # Build groups dict
         groups = {}
         for group_id, group_df in df.groupby('group_id'):
-            groups[group_id] = {
-                'Group_M_Crit200': group_df['halo_mass'].iloc[0] if 'halo_mass' in group_df.columns else 10 ** group_df['halo_mass_log'].iloc[0],
+            groups[int(group_id)] = {
+                'Group_M_Crit200': float(group_df['halo_mass'].iloc[0]),
                 'GroupNsubs': len(group_df)
             }
 
@@ -477,11 +485,18 @@ class TNGLoader(BaseDataLoader):
         Returns:
             SubhaloData object
         """
+        H = 0.6774
+        CKPC_TO_MPC = 1e-3 / H
+
         position = np.array([
             raw_record.get('pos_x', 0.0),
             raw_record.get('pos_y', 0.0),
             raw_record.get('pos_z', 0.0)
         ], dtype=np.float32)
+
+        # Convert positions from ckpc/h to Mpc if still in raw units
+        if np.abs(position).max() > 100:
+            position = position * CKPC_TO_MPC
 
         velocity = np.array([
             raw_record.get('vel_x', 0.0),
@@ -489,14 +504,38 @@ class TNGLoader(BaseDataLoader):
             raw_record.get('vel_z', 0.0)
         ], dtype=np.float32)
 
+        # Stellar mass — CSV stores log10 scale (8-16), need linear
+        raw_sm = float(raw_record.get('stellar_mass', 10.0))
+        if 6 <= raw_sm <= 16:
+            stellar_mass = 10 ** raw_sm
+        else:
+            stellar_mass = max(raw_sm, 1e6)
+
+        # Velocity dispersion — try both column name variants
+        vel_disp = float(raw_record.get(
+            'vel_dispersion',
+            raw_record.get('velocity_dispersion', 100.0)
+        ))
+
+        # Half mass radius — convert ckpc/h to Mpc if needed
+        raw_hmr = float(raw_record.get('half_mass_radius', 0.001))
+        if raw_hmr > 1.0:
+            half_mass_radius = raw_hmr * CKPC_TO_MPC
+        else:
+            half_mass_radius = max(raw_hmr, 1e-6)
+
+        # Metallicity
+        metallicity = float(raw_record.get('metallicity', 0.02))
+        metallicity = max(metallicity, 1e-10)
+
         return SubhaloData(
-            subhalo_id=int(raw_record.get('subhalo_id', raw_record.name)),
+            subhalo_id=int(raw_record.get('subhalo_id', 0)),
             position=position,
             velocity=velocity,
-            stellar_mass=float(raw_record.get('stellar_mass', 1e10)),
-            velocity_dispersion=float(raw_record.get('vel_dispersion', raw_record.get('velocity_dispersion', 100.0))),
-            half_mass_radius=float(raw_record.get('half_mass_radius', 0.001)),
-            metallicity=float(raw_record.get('metallicity', 0.02))
+            stellar_mass=stellar_mass,
+            velocity_dispersion=vel_disp,
+            half_mass_radius=half_mass_radius,
+            metallicity=metallicity
         )
 
     def _parse_all_subhalos(
