@@ -605,10 +605,7 @@ class TNGLoader(BaseDataLoader):
             if group_id in groups:
                 group = groups[group_id]
                 halo_mass = group.get('Group_M_Crit200', group.get('mass', 1e12))
-                if halo_mass < 1e6:  # Already in M_sun
-                    pass
-                else:
-                    halo_mass = halo_mass * self.MASS_UNIT / self.H_PARAM
+
             else:
                 # Get from first subhalo's halo_mass
                 first_row = df[df['group_id'] == group_id].iloc[0]
