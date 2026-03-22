@@ -224,11 +224,29 @@ class TNGLoader(BaseDataLoader):
         df = pd.read_csv(filepath)
         logger.info(f"Loaded {len(df)} subhalos from {filepath}")
 
+        # Fix column name if needed (vel_dispersion → velocity_dispersion)
+        if 'vel_dispersion' in df.columns and 'velocity_dispersion' not in df.columns:
+            df = df.rename(columns={'vel_dispersion': 'velocity_dispersion'})
+
+        # Convert positions from ckpc/h to Mpc if values are large (>100 = still in ckpc/h)
+        if df['pos_x'].abs().max() > 100:
+            H = 0.6774
+            CKPC_TO_MPC = 1e-3 / H
+            df['pos_x'] = df['pos_x'] * CKPC_TO_MPC
+            df['pos_y'] = df['pos_y'] * CKPC_TO_MPC
+            df['pos_z'] = df['pos_z'] * CKPC_TO_MPC
+            logger.info(f"Converted positions from ckpc/h to Mpc")
+
+        # Add linear halo_mass column if only log version exists
+        if 'halo_mass' not in df.columns and 'halo_mass_log' in df.columns:
+            df['halo_mass'] = 10 ** df['halo_mass_log']
+            logger.info("Created halo_mass column from halo_mass_log")
+
         # Build groups dict from DataFrame
         groups = {}
         for group_id, group_df in df.groupby('group_id'):
             groups[group_id] = {
-                'Group_M_Crit200': group_df['halo_mass'].iloc[0] if 'halo_mass' in group_df else 10 ** group_df['halo_mass_log'].iloc[0],
+                'Group_M_Crit200': group_df['halo_mass'].iloc[0] if 'halo_mass' in group_df.columns else 10 ** group_df['halo_mass_log'].iloc[0],
                 'GroupNsubs': len(group_df)
             }
 
@@ -476,7 +494,7 @@ class TNGLoader(BaseDataLoader):
             position=position,
             velocity=velocity,
             stellar_mass=float(raw_record.get('stellar_mass', 1e10)),
-            velocity_dispersion=float(raw_record.get('velocity_dispersion', 100.0)),
+            velocity_dispersion=float(raw_record.get('vel_dispersion', raw_record.get('velocity_dispersion', 100.0))),
             half_mass_radius=float(raw_record.get('half_mass_radius', 0.001)),
             metallicity=float(raw_record.get('metallicity', 0.02))
         )
@@ -555,7 +573,8 @@ class TNGLoader(BaseDataLoader):
             else:
                 # Get from first subhalo's halo_mass
                 first_row = df[df['group_id'] == group_id].iloc[0]
-                halo_mass = first_row.get('halo_mass', 10 ** first_row.get('halo_mass_log', 12))
+                halo_mass_log = first_row.get('halo_mass_log', 12.0)
+                halo_mass = first_row.get('halo_mass', 10 ** float(halo_mass_log))
 
             halo = HaloData(
                 cluster_id=f"tng100_{group_id:07d}",

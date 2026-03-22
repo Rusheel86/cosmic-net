@@ -473,6 +473,9 @@ class GraphBuilder:
     def get_node_feature_dim(self) -> int:
         """Get the dimension of node features (fixed at 4)."""
         return 4
+    def build(self, halos: List[HaloData]) -> List[Data]:
+        """Alias for build_graphs — maintains API consistency."""
+        return self.build_graphs(halos)
 
 
 class GraphDataset(torch.utils.data.Dataset):
