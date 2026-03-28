@@ -2,17 +2,12 @@
 train.py
 Purpose: Main training loop for Cosmic-Net GNN with W&B logging, checkpointing,
          and support for cross-simulation generalization experiments.
-Inputs: config (dict) - Configuration dictionary from config.yaml
-        train_loader, val_loader, test_loader - PyG DataLoaders
-Outputs: Trained model checkpoint, W&B logs, evaluation metrics
-Config keys: training.epochs, training.learning_rate, training.optimizer,
-             training.train_source, training.test_source, training.checkpoint_dir,
-             wandb.enabled, wandb.project, wandb.entity
 """
 
 import os
 import logging
 import time
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
@@ -35,7 +30,6 @@ from model.physics_loss import PhysicsInformedLoss, MetricsComputer
 from training.scheduler import (
     build_optimizer,
     build_lr_scheduler,
-    LambdaScheduler,
     EarlyStopping,
     TrainingState,
     get_current_lr
@@ -47,16 +41,44 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+class CosineLambdaScheduler:
+    """
+    Custom strictly-enforced Lambda Scheduler for Physics Loss.
+    Guarantees lambda stays strictly at 0.0 during warmup, then
+    applies a smooth cosine annealing curve up to lambda_end.
+    """
+    def __init__(self, warmup_epochs: int, lambda_end: float, total_epochs: int):
+        self.warmup_epochs = warmup_epochs
+        self.lambda_end = lambda_end
+        self.total_epochs = total_epochs
+        self.current_lambda = 0.0
+
+    def step(self, epoch: int) -> float:
+        if epoch < self.warmup_epochs:
+            self.current_lambda = 0.0
+        else:
+            # Calculate progress from 0.0 to 1.0 AFTER warmup
+            progress = (epoch - self.warmup_epochs) / max(1, (self.total_epochs - self.warmup_epochs))
+            progress = min(1.0, max(0.0, progress)) # Clamp just in case
+            
+            # Cosine curve from 0 to lambda_end
+            self.current_lambda = self.lambda_end * 0.5 * (1 - math.cos(math.pi * progress))
+            
+        return self.current_lambda
+
+    def get_lambda(self) -> float:
+        return self.current_lambda
+
+    def state_dict(self) -> Dict[str, Any]:
+        return {'current_lambda': self.current_lambda}
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        self.current_lambda = state.get('current_lambda', 0.0)
+
+
 class Trainer:
     """
     Main trainer class for Cosmic-Net GNN.
-
-    Handles:
-    - Training loop with physics-informed loss
-    - Validation and evaluation
-    - Checkpointing and early stopping
-    - W&B logging
-    - Cross-simulation generalization experiments
     """
 
     def __init__(
@@ -68,17 +90,6 @@ class Trainer:
         test_loader: Optional[DataLoader] = None,
         device: Optional[torch.device] = None
     ):
-        """
-        Initialize the trainer.
-
-        Args:
-            config: Configuration dictionary from config.yaml
-            model: The GNN model to train
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            test_loader: Test data loader (optional)
-            device: Device to train on (auto-detect if None)
-        """
         self.config = config
         self.training_config = config.get('training', {})
         self.wandb_config = config.get('wandb', {})
@@ -103,7 +114,20 @@ class Trainer:
         # Optimizer and schedulers
         self.optimizer = build_optimizer(self.model, config)
         self.lr_scheduler = build_lr_scheduler(self.optimizer, config)
-        self.lambda_scheduler = LambdaScheduler(config)
+        
+        # --- NEW: Inject the custom Cosine Scheduler here ---
+        # Pull parameters from the root config, with fail-safes
+        warmup = config.get('warmup_epochs', 75)
+        l_end = config.get('lambda_end', 0.005)
+        epochs = self.training_config.get('epochs', 500)
+        
+        self.lambda_scheduler = CosineLambdaScheduler(
+            warmup_epochs=warmup, 
+            lambda_end=l_end, 
+            total_epochs=epochs
+        )
+        logger.info(f"Initialized CosineLambdaScheduler: Warmup={warmup}, MaxLambda={l_end}")
+        # ----------------------------------------------------
 
         # Early stopping
         patience = self.training_config.get('early_stopping_patience', 20)
@@ -141,28 +165,23 @@ class Trainer:
         logger.info(f"Trainer initialized on device: {self.device}")
 
     def _init_wandb(self) -> None:
-        """Initialize Weights & Biases logging."""
         if not self.use_wandb:
             logger.info("W&B logging disabled")
             return
 
         try:
-            # Get API key from environment
             api_key = os.environ.get('WANDB_API_KEY')
             if api_key:
                 wandb.login(key=api_key)
 
-            # Build run name
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             prefix = self.wandb_config.get('run_name_prefix', 'cosmicnet')
             run_name = f"{prefix}_{timestamp}"
 
-            # Tags
             tags = list(self.wandb_config.get('tags', ['gnn', 'physics-informed']))
             if self.is_cross_sim:
                 tags.append('cross_sim')
 
-            # Initialize W&B run
             wandb.init(
                 project=self.wandb_config.get('project', 'cosmic-net'),
                 entity=self.wandb_config.get('entity') or os.environ.get('WANDB_ENTITY'),
@@ -172,7 +191,6 @@ class Trainer:
                 reinit=True
             )
 
-            # Watch model
             if self.wandb_config.get('watch_model', True):
                 wandb.watch(
                     self.model,
@@ -187,15 +205,6 @@ class Trainer:
             self.use_wandb = False
 
     def train_epoch(self, epoch: int) -> Dict[str, float]:
-        """
-        Train for one epoch.
-
-        Args:
-            epoch: Current epoch number
-
-        Returns:
-            Dictionary of training metrics
-        """
         self.model.train()
 
         total_loss = 0.0
@@ -245,16 +254,6 @@ class Trainer:
 
     @torch.no_grad()
     def validate(self, loader: DataLoader, prefix: str = 'val') -> Dict[str, float]:
-        """
-        Validate on a data loader.
-
-        Args:
-            loader: DataLoader to validate on
-            prefix: Metric prefix (e.g., 'val' or 'test')
-
-        Returns:
-            Dictionary of validation metrics
-        """
         self.model.eval()
 
         all_predictions = []
@@ -284,11 +283,9 @@ class Trainer:
             total_virial += loss_dict['virial_loss'].item()
             num_batches += 1
 
-        # Concatenate all predictions and targets
         all_predictions = torch.cat(all_predictions)
         all_targets = torch.cat(all_targets)
 
-        # Compute additional metrics
         detailed_metrics = MetricsComputer.compute_all(all_predictions, all_targets)
 
         metrics = {
@@ -304,12 +301,6 @@ class Trainer:
         return metrics
 
     def train(self) -> Dict[str, Any]:
-        """
-        Main training loop.
-
-        Returns:
-            Dictionary with training results
-        """
         epochs = self.training_config.get('epochs', 200)
 
         logger.info(f"Starting training for {epochs} epochs")
@@ -356,7 +347,6 @@ class Trainer:
 
             # Log to W&B
             if self.use_wandb:
-                # Add weight norms
                 metrics.update({f'weights/{k}': v for k, v in self.model.get_weight_norms().items()})
                 wandb.log(metrics, step=epoch)
 
@@ -384,7 +374,6 @@ class Trainer:
         # Final test evaluation
         test_metrics = {}
         if self.test_loader is not None:
-            # Load best model
             best_checkpoint = self.checkpoint_dir / 'best_model.pt'
             if best_checkpoint.exists():
                 self._load_checkpoint(best_checkpoint)
@@ -400,7 +389,6 @@ class Trainer:
         final_metrics = {**val_metrics, **test_metrics}
         self._save_checkpoint('final_model.pt', epoch, final_metrics)
 
-        # Close W&B
         if self.use_wandb:
             wandb.finish()
 
@@ -411,13 +399,7 @@ class Trainer:
             'total_time': total_time
         }
 
-    def _save_checkpoint(
-        self,
-        filename: str,
-        epoch: int,
-        metrics: Dict[str, float]
-    ) -> None:
-        """Save a checkpoint."""
+    def _save_checkpoint(self, filename: str, epoch: int, metrics: Dict[str, float]) -> None:
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
@@ -435,27 +417,12 @@ class Trainer:
         logger.debug(f"Saved checkpoint: {path}")
 
     def _load_checkpoint(self, path: Path) -> None:
-        """Load a checkpoint."""
         checkpoint = torch.load(path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         logger.info(f"Loaded checkpoint: {path}")
 
     @torch.no_grad()
-    def evaluate_with_uncertainty(
-        self,
-        loader: DataLoader,
-        n_samples: int = 50
-    ) -> Dict[str, Any]:
-        """
-        Evaluate with MC-Dropout uncertainty estimation.
-
-        Args:
-            loader: DataLoader to evaluate
-            n_samples: Number of MC samples
-
-        Returns:
-            Dictionary with predictions, uncertainties, and metrics
-        """
+    def evaluate_with_uncertainty(self, loader: DataLoader, n_samples: int = 50) -> Dict[str, Any]:
         all_means = []
         all_stds = []
         all_targets = []
@@ -463,15 +430,12 @@ class Trainer:
 
         for batch_data in loader:
             batch_data = batch_data.to(self.device)
-
-            # Get predictions with uncertainty
             uncertainty = self.model.predict_with_uncertainty(batch_data, n_samples)
 
             all_means.append(uncertainty['mean'].cpu())
             all_stds.append(uncertainty['std'].cpu())
             all_targets.append(batch_data.y.cpu())
 
-            # Get cluster IDs if available
             if hasattr(batch_data, 'cluster_id'):
                 all_cluster_ids.extend(batch_data.cluster_id)
 
@@ -479,10 +443,8 @@ class Trainer:
         all_stds = torch.cat(all_stds)
         all_targets = torch.cat(all_targets)
 
-        # Compute metrics
         metrics = MetricsComputer.compute_all(all_means, all_targets)
 
-        # Calibration check: what fraction of targets fall within 95% CI?
         conf_low = all_means - 1.96 * all_stds
         conf_high = all_means + 1.96 * all_stds
         coverage = ((all_targets >= conf_low) & (all_targets <= conf_high)).float().mean()
@@ -503,22 +465,7 @@ def train_model(
     val_loader: DataLoader,
     test_loader: Optional[DataLoader] = None
 ) -> Tuple[CosmicNetGNN, Dict[str, Any]]:
-    """
-    Main entry point for training.
-
-    Args:
-        config: Configuration dictionary
-        train_loader: Training data loader
-        val_loader: Validation data loader
-        test_loader: Test data loader (optional)
-
-    Returns:
-        Tuple of (trained_model, results_dict)
-    """
-    # Build model
     model = build_model(config)
-
-    # Create trainer
     trainer = Trainer(
         config=config,
         model=model,
@@ -526,10 +473,7 @@ def train_model(
         val_loader=val_loader,
         test_loader=test_loader
     )
-
-    # Train
     results = trainer.train()
-
     return model, results
 
 
@@ -540,21 +484,9 @@ def run_ablation_study(
     val_loader: DataLoader,
     test_loader: Optional[DataLoader] = None
 ) -> List[Dict[str, Any]]:
-    """
-    Run ablation study with multiple configuration variations.
-
-    Args:
-        config: Base configuration
-        ablation_configs: List of config overrides for each ablation
-        train_loader, val_loader, test_loader: Data loaders
-
-    Returns:
-        List of results for each ablation
-    """
     results = []
 
     for i, ablation in enumerate(ablation_configs):
-        # Merge configs
         run_config = {**config}
         for key, value in ablation.items():
             keys = key.split('.')
@@ -565,7 +497,6 @@ def run_ablation_study(
 
         logger.info(f"Running ablation {i+1}/{len(ablation_configs)}: {ablation}")
 
-        # Train
         model, run_results = train_model(
             run_config, train_loader, val_loader, test_loader
         )
