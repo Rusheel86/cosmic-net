@@ -13,7 +13,7 @@ seed: 42
 # =============================================================================
 data:
   # Active data source: synthetic | tng | camels | camels_hf
-  source: synthetic
+  source: tng
 
   # Grouping method for halos: fof (Friends-of-Friends) | dbscan
   grouping: fof
