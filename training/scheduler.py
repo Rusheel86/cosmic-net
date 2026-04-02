@@ -55,9 +55,9 @@ class LambdaScheduler:
         self.schedule_type = training_config.get('lambda_schedule', 'cosine')
 
         # Annealing parameters
-        self.lambda_start = training_config.get('lambda_start', 0.0)
+        self.lambda_start = training_config.get('lambda_start', 0.02)
         self.lambda_end = training_config.get('lambda_end', 1.0)
-        self.lambda_epochs = training_config.get('lambda_epochs', 100)
+        self.lambda_epochs = training_config.get('lambda_epochs', 50)
 
         # Fixed value (when schedule_type is 'fixed')
         self.lambda_fixed = training_config.get('lambda_fixed', 0.5)
@@ -124,13 +124,17 @@ class LambdaScheduler:
         Returns:
             Current lambda value
         """
+
+        effective_start = max(self.lambda_start, 0.01) 
+
         if self.current_epoch >= self.lambda_epochs:
+
             return self.lambda_end
 
         progress = self.current_epoch / max(self.lambda_epochs, 1)
-        # Cosine annealing: 0.5 * (1 - cos(π * progress))
+
         cosine_factor = 0.5 * (1 - math.cos(math.pi * progress))
-        return self.lambda_start + cosine_factor * (self.lambda_end - self.lambda_start)
+        return effective_start + cosine_factor * (self.lambda_end - effective_start)
 
     def get_lambda(self) -> float:
         """Get current lambda value without stepping."""
