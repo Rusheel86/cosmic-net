@@ -11,7 +11,7 @@ from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from scipy import stats
 
 # Add workspace to path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from data.loaders.tng_loader import TNGLoader
 from graph.graph_builder import GraphBuilder
