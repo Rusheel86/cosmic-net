@@ -15,7 +15,7 @@ import os
 import time
 
 # ── CONFIG ──────────────────────────────────────────────────
-API_KEY       = "a74da8e879fb9df993b5df59e1eb8670"
+API_KEY       = "" # Insert your TNG API key here (get from https://www.tng-project.org/api/)
 BASE_URL      = "https://www.tng-project.org/api"
 SIM           = "TNG100-1"
 SNAPSHOT      = 99

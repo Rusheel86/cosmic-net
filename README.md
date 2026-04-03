@@ -54,7 +54,6 @@ cp .env.example .env
 
 ## 🚀 Pre-Trained Model Inference (For Frontends & APIs)
 
-If you are giving the `best_model_augmented.pt` to another developer to build a frontend, **the `.pt` file alone is not enough**. A standard PyTorch `.pt` file only saves the state dictionary (weights), not the Python class architecture it belongs to.
 
 ### 1. Required Files for Inference
 * `best_model_augmented.pt` (The weights file)
