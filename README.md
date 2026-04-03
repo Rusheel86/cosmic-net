@@ -323,10 +323,10 @@ Logged metrics:
 If you use Cosmic-Net in your research, please cite:
 
 ```bibtex
-@software{cosmic_net_2024,
+@software{cosmic_net_2026,
   title = {Cosmic-Net: Physics-Informed GNN for Dark Matter Halo Mass Prediction},
-  author = {Your Name},
-  year = {2024},
+  author = {Rusheel Sharma},
+  year = {2026},
   url = {https://github.com/Rusheel86/cosmic-net}
 }
 ```
@@ -392,3 +392,9 @@ Contributions welcome! Please:
 - [IllustrisTNG](https://www.tng-project.org/) team for simulation data
 - [CAMELS](https://www.camel-simulations.org/) collaboration for multi-simulation suite
 - [PySR](https://github.com/MilesCranmer/PySR) for symbolic regression
+
+## Contact
+
+For any questions, discussions, or issues, please reach out to me at: **[rusheelhere@gmail.com](mailto:rusheelhere@gmail.com)**
+
+## Contact US
