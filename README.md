@@ -52,7 +52,21 @@ cp .env.example .env
 # Edit .env with your API keys (TNG_API_KEY, WANDB_API_KEY)
 ```
 
-## 🚀 Pre-Trained Model Inference (For Frontends & APIs)
+## � Results & Visualizations
+
+Our Augmented Model significantly improves over the Baseline when generalizing to higher complexities. Below are standard astrophysical evaluations:
+
+### Model Performance: Predictions vs. True Mass
+![Predictions Scatter](outputs/research_paper_plots/6_predictions_scatter.png)
+
+### Stellar-to-Halo Mass Relation (SHMR Dataset Explorer)
+![SHMR Relation](outputs/research_paper_plots/3_shmr_relation.png)
+
+### Bias and Scatter Binned Analysis
+![Binned Bias and Scatter](outputs/research_paper_plots/8_binned_bias_scatter.png)
+
+
+## �🚀 Pre-Trained Model Inference (For Frontends & APIs)
 
 
 ### 1. Required Files for Inference
