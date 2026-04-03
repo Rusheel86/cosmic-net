@@ -52,7 +52,7 @@ cp .env.example .env
 # Edit .env with your API keys (TNG_API_KEY, WANDB_API_KEY)
 ```
 
-## � Results & Visualizations
+##  Results & Visualizations
 
 Our Augmented Model significantly improves over the Baseline when generalizing to higher complexities. Below are standard astrophysical evaluations:
 
@@ -66,7 +66,7 @@ Our Augmented Model significantly improves over the Baseline when generalizing t
 ![Binned Bias and Scatter](outputs/research_paper_plots/8_binned_bias_scatter.png)
 
 
-## �🚀 Pre-Trained Model Inference (For Frontends & APIs)
+## 🚀 Pre-Trained Model Inference (For Frontends & APIs)
 
 
 ### 1. Required Files for Inference
