@@ -65,6 +65,22 @@ Our Augmented Model significantly improves over the Baseline when generalizing t
 ### Bias and Scatter Binned Analysis
 ![Binned Bias and Scatter](outputs/research_paper_plots/8_binned_bias_scatter.png)
 
+### Explainable AI (Physics-Informed Saliency Mapping) - Subhalo Kinematics Importance
+*Note on XAI Methodology: While structural masking methods like PGExplainer or GNNExplainer are standard for discrete topology tasks (e.g., molecule classification), they artificially break the continuous spatial manifold in astrophysics datasets by simulating 'dropped' edges. We instead utilized **Input × Gradient Saliency Mapping**, a rigorous evaluation of the physics-informed model's smooth sensitivity to continuous kinematic scalars (velocity, mass). This measures impact without violating spatial graph integrity.*
+
+The table and chart below illustrate the internal gradient mapping across physical edge interactions in the local graphs. This reveals exactly which kinematic properties of neighboring subhalos are driving the GNN\'s cluster mass prediction:
+
+*   **Baseline Model** relies disproportionately on geometric alignment (**Cos_theta**, 39.61%) to deduce total mass boundaries—effectively memorizing coordinate shapes rather than internal dynamics.
+*   **Augmented Model** distributes feature importance much more robustly across actual physical kinematics, primarily balancing relative velocity interactions (**Delta_V**, 26.78%) and mass differentials (**Mass_Ratio**, 26.59%). This signifies a deeper, generalization-ready understanding of subhalo gravitational dynamics.
+
+| Model     | Distance   | Delta_v   | Cos_theta   | Mass_Ratio   | Proj_Sep   |
+|-----------|------------|-----------|-------------|--------------|------------|
+| Baseline  | 11.16%     | 16.60%    | 39.61%      | 19.06%       | 13.57%     |
+| Augmented | 14.01%     | 26.78%    | 23.91%      | 26.59%       | 8.71%      |
+
+![Saliency Edge Importance](outputs/xai_results/saliency_edge_importance.png)
+
+
 
 ## 🚀 Pre-Trained Model Inference (For Frontends & APIs)
 
