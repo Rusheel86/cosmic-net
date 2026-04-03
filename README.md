@@ -52,7 +52,56 @@ cp .env.example .env
 # Edit .env with your API keys (TNG_API_KEY, WANDB_API_KEY)
 ```
 
+## 🚀 Pre-Trained Model Inference (For Frontends & APIs)
+
+If you are giving the `best_model_augmented.pt` to another developer to build a frontend, **the `.pt` file alone is not enough**. A standard PyTorch `.pt` file only saves the state dictionary (weights), not the Python class architecture it belongs to.
+
+### 1. Required Files for Inference
+* `best_model_augmented.pt` (The weights file)
+* `model/model.py` (The PyTorch class architecture, e.g., `CosmicNetGNN`)
+* `config/config.yaml` (The hyperparameters to initialize the correct model size)
+
+### 2. Node Features (Input Constraints)
+Each galaxy/subhalo is a **Node**. The 4 features must be in this exact order and take the form of $\log_{10}$ values:
+1. `log_10(stellar_mass)` (in $M_\odot$)
+2. `log_10(velocity_dispersion)` (in km/s)
+3. `log_10(half_mass_radius)` (in kpc)
+4. `log_10(metallicity)`
+
+### 3. Edge Features
+Connections between galaxies are formed using a **Radius Graph** (e.g., $2.0$ Mpc). Edges require 5 physical features:
+1. `distance` (3D Euclidean distance in Mpc)
+2. `delta_v` (Relative velocity magnitude in km/s)
+3. `cos_theta` (Cosine of angle between pos and vel vectors)
+4. `mass_ratio` (Difference in log stellar masses)
+5. `proj_sep` (2D projected separation in Mpc)
+
+### 4. Loading the Model snippet
+
+```python
+import torch
+import yaml
+from model.model import build_model
+
+# 1. Load config
+with open("config/config.yaml", "r") as f:
+    cfg = yaml.safe_load(f)
+
+# 2. Initialize device and architecture
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = build_model(cfg).to(device)
+
+# 3. Load weights (dict extract mapping)
+checkpoint = torch.load("best_model_augmented.pt", map_location=device)
+model.load_state_dict(checkpoint["model_state_dict"])
+model.eval()
+
+# 4. Predict
+# predictions = model(pyg_data_batch)  # Takes in PyG Data/Batch objects
+```
+
 ## Quick Start
+
 
 ### Training with Synthetic Data
 
