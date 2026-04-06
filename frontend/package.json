@@ -1,0 +1,25 @@
+{
+  "name": "cosmic-net-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "cytoscape": "^3.28.1",
+    "react-cytoscapejs": "^2.0.0",
+    "plotly.js": "^2.29.1",
+    "react-plotly.js": "^2.6.0",
+    "katex": "^0.16.10",
+    "axios": "^1.6.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.2.0"
+  },
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
