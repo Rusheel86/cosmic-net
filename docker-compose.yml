@@ -1,0 +1,46 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cosmic_net_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/model_artifacts:/app/model_artifacts:ro
+    environment:
+      DEBUG: "false"
+      MODEL_PATH: "model_artifacts/best_model_augmented.pt"
+      MODEL_NUM_NODE_FEATURES: "4"
+      MODEL_NUM_LAYERS: "3"
+      MODEL_HIDDEN_DIM: "64"
+      MC_DROPOUT_PASSES: "30"
+      KNN_K: "8"
+      EQUATION_ALPHA: "2.31"
+      EQUATION_BETA: "0.87"
+      EQUATION_GAMMA: "11.42"
+      EQUATION_R2: "0.91"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cosmic_net_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: cosmic_net_network
