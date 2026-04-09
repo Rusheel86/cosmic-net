@@ -11,7 +11,8 @@
     "plotly.js": "^2.29.1",
     "react-plotly.js": "^2.6.0",
     "katex": "^0.16.10",
-    "axios": "^1.6.8"
+    "axios": "^1.6.8",
+    "three": "^0.164.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

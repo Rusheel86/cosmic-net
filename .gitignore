@@ -1,52 +1,21 @@
-﻿# Data
-data/raw/
-*.pt
-*.h5
-*.hdf5
-*.csv
-
-# Outputs
-outputs/
-wandb/
-*.log
-
-# Environment
-.env
-.venv/
-venv/
-env/
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-*.egg
+venv/
+.env
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
+# Model file (too large for GitHub)
+backend/model_artifacts/*.pt
+backend/model_artifacts/*.ckpt
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Node
+frontend/node_modules/
+frontend/build/
+frontend/.vite/
 
-# OS
+# Docker
+*.log
+
+# Mac
 .DS_Store
-Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# PySR temp files
-hall_of_fame*.csv
-.SymbolicRegression.jl/
